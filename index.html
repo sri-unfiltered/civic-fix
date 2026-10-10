@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#151713">
+  <title>CivicFix — Make Your City Better</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#home" aria-label="CivicFix home">
+      <span class="brand-mark">C</span>
+      <span>Civic<span class="lime-text">Fix</span></span>
+    </a>
+
+    <button class="menu-button" id="menuBtn" aria-label="Toggle navigation"
+      aria-expanded="false">☰</button>
+
+    <nav class="nav-links" id="mobileNav">
+      <a href="#home">Home</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#issues">Community</a>
+      <button class="button button-small" data-open-report>Report an issue <span>↗</span></button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero section-wrap" id="home">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="status-dot"></span> YOUR CITY. YOUR VOICE.</div>
+        <h1>Small reports.<br> <span class="lime-text">Real change.</span></h1>
+        <p class="hero-description">
+          Broken roads, overflowing waste, water leaks or streetlights that
+          stopped working. Report local problems and help make your community better.
+        </p>
+        <div class="hero-actions">
+          <button class="button" data-open-report>Report an issue <span>↗</span></button>
+          <button class="button button-outline" id="openTracker">Track a report <span>→</span></button>
+        </div>
+        <p class="micro-copy"><span class="lime-text">●</span> Every report starts with someone speaking up.</p>
+      </div>
+
+      <div class="hero-art" aria-label="Illustration of a city street">
+        <div class="art-topline"><span>CITY WATCH</span><span>01 / COMMUNITY</span></div>
+        <div class="city-scene">
+          <div class="sun"></div>
+          <div class="building building-one"><i></i><i></i><i></i><i></i></div>
+          <div class="building building-two"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="building building-three"><i></i><i></i><i></i><i></i></div>
+          <div class="road"></div>
+          <div class="road-line"></div>
+          <div class="plant plant-one">✳</div>
+          <div class="plant plant-two">✳</div>
+          <div class="art-pin"><span>+</span></div>
+        </div>
+        <div class="art-bottomline">
+          <span>BETTER STREETS BEGIN HERE</span><span>CF / 2026</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="stats-strip section-wrap" aria-label="Report statistics">
+      <div><strong data-counter="0" id="statTotal">—</strong><span>Reports received</span></div>
+      <div><strong data-counter="0" id="statProgress">—</strong><span>Being addressed</span></div>
+      <div><strong data-counter="0" id="statResolved">—</strong><span>Resolved reports</span></div>
+      <div class="stats-note"><span class="lime-text">●</span> Community-powered change</div>
+    </section>
+
+    <section class="section-wrap intro-section" id="how-it-works">
+      <div class="section-kicker">01 — HOW IT WORKS</div>
+      <div class="section-heading-row">
+        <h2>See something wrong?<br><span class="muted-text">Let's fix it.</span></h2>
+        <p>Turn everyday civic problems into clear, trackable reports.</p>
+      </div>
+
+      <div class="steps-grid">
+        <article class="step-item">
+          <span class="step-number">01</span>
+          <div class="step-symbol">↗</div>
+          <h3>Report it</h3>
+          <p>Tell us what happened and where the issue is located.</p>
+        </article>
+        <article class="step-item">
+          <span class="step-number">02</span>
+          <div class="step-symbol">◎</div>
+          <h3>Track it</h3>
+          <p>Use your unique tracking ID to check the latest status.</p>
+        </article>
+        <article class="step-item">
+          <span class="step-number">03</span>
+          <div class="step-symbol">✓</div>
+          <h3>Follow progress</h3>
+          <p>See status updates as your report moves through the process.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="issues-section">
+      <div class="section-wrap" id="issues">
+        <div class="section-kicker">02 — WHAT NEEDS ATTENTION?</div>
+        <div class="section-heading-row">
+          <h2>It starts with<br><span class="muted-text">noticing.</span></h2>
+          <p>Choose a category when you submit your report. Every detail helps.</p>
+        </div>
+
+        <div class="issue-filters" aria-label="Issue categories">
+          <button class="filter-btn active" data-filter="all">All issues</button>
+          <button class="filter-btn" data-filter="Roads">Roads</button>
+          <button class="filter-btn" data-filter="Waste">Waste</button>
+          <button class="filter-btn" data-filter="Water">Water</button>
+          <button class="filter-btn" data-filter="Lighting">Lighting</button>
+        </div>
+
+        <div class="issue-grid">
+          <article class="issue-card" data-category="Roads">
+            <div class="issue-card-icon">⌁</div><span class="issue-label">ROADS</span>
+            <h3>Damaged roads</h3><p>Potholes, broken pavements and unsafe streets.</p>
+          </article>
+          <article class="issue-card" data-category="Waste">
+            <div class="issue-card-icon">♧</div><span class="issue-label">WASTE</span>
+            <h3>Waste problems</h3><p>Overflowing bins and uncollected rubbish.</p>
+          </article>
+          <article class="issue-card" data-category="Water">
+            <div class="issue-card-icon">≈</div><span class="issue-label">WATER</span>
+            <h3>Water issues</h3><p>Leaks, drainage concerns and water supply problems.</p>
+          </article>
+          <article class="issue-card" data-category="Lighting">
+            <div class="issue-card-icon">✳</div><span class="issue-label">LIGHTING</span>
+            <h3>Street lighting</h3><p>Broken lights and poorly lit public areas.</p>
+          </article>
+        </div>
+
+        <div class="report-banner">
+          <div><span class="section-kicker">YOUR NEIGHBOURHOOD NEEDS YOU</span>
+            <h2>Don't just walk past it.</h2>
+            <p>Make the issue visible. Submit a report today.</p>
+          </div>
+          <button class="button" data-open-report>Start a report <span>↗</span></button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer section-wrap">
+    <a class="brand" href="#home"><span class="brand-mark">C</span><span>Civic<span class="lime-text">Fix</span></span></a>
+    <p>A community prototype for a better everyday city.</p>
+    <a href="admin.html">Admin dashboard ↗</a>
+  </footer>
+
+  <!-- REPORT MODAL -->
+  <div class="modal-backdrop" id="reportModal" hidden>
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+      <button class="modal-close" type="button" data-close-modal="reportModal" aria-label="Close">×</button>
+      <div class="section-kicker">COMMUNITY REPORT</div>
+      <h2 id="reportTitle">What needs fixing?</h2>
+      <p class="modal-description">Give a clear description so the issue can be identified.</p>
+
+      <form id="reportForm">
+        <label for="issueType">Issue category *</label>
+        <select id="issueType" required>
+          <option value="">Choose a category</option>
+          <option value="Roads">Roads</option>
+          <option value="Waste">Waste</option>
+          <option value="Water">Water</option>
+          <option value="Lighting">Lighting</option>
+          <option value="Other">Other</option>
+        </select>
+
+        <label for="issueLocation">Location *</label>
+        <div class="location-row">
+          <input id="issueLocation" type="text" placeholder="Street, area or landmark" required maxlength="200">
+          <button class="button button-outline location-button" id="getLocationBtn" type="button">Use GPS</button>
+        </div>
+        <p class="field-note" id="locationStatus" aria-live="polite">You can enter the location manually.</p>
+
+        <label for="issueDescription">Describe the problem *</label>
+        <textarea id="issueDescription" rows="4" maxlength="2000"
+          placeholder="What happened? Add useful details..." required></textarea>
+
+        <label for="issueSeverity">Priority *</label>
+        <select id="issueSeverity" required>
+          <option value="">Choose priority</option>
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Critical">Critical</option>
+        </select>
+
+        <label for="issuePhoto">Photo (optional)</label>
+        <input id="issuePhoto" type="file" accept="image/*">
+        <div id="photoPreview" class="photo-preview" hidden></div>
+        <p class="field-note">Prototype note: the photo is previewed in your browser but is not uploaded to the backend.</p>
+
+        <p class="form-message" id="reportFormMessage" aria-live="polite"></p>
+        <button class="button button-full" id="submitReportBtn" type="submit">Submit report <span>↗</span></button>
+      </form>
+    </section>
+  </div>
+
+  <!-- SUCCESS MODAL: no automatic timeout -->
+  <div class="modal-backdrop" id="successModal" hidden>
+    <section class="modal-panel success-panel" role="dialog" aria-modal="true" aria-labelledby="successTitle">
+      <div class="success-icon">✓</div>
+      <div class="section-kicker">REPORT RECEIVED</div>
+      <h2 id="successTitle">Your report is recorded.</h2>
+      <p id="successMessage" class="modal-description">Save your tracking ID to check the status later.</p>
+      <div class="tracking-code-box">
+        <span>YOUR TRACKING ID</span>
+        <strong id="trackingId">CF-XXXXXXXX</strong>
+      </div>
+      <button class="button button-full" id="copyTrackingBtn" type="button">Copy tracking ID</button>
+      <button class="button button-outline button-full" id="trackAfterSubmit" type="button">Track this report</button>
+      <button class="text-button" id="closeSuccessBtn" type="button">Close this message</button>
+    </section>
+  </div>
+
+  <!-- TRACKING MODAL -->
+  <div class="modal-backdrop" id="trackerModal" hidden>
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="trackerTitle">
+      <button class="modal-close" type="button" data-close-modal="trackerModal" aria-label="Close">×</button>
+      <div class="section-kicker">REPORT TRACKER</div>
+      <h2 id="trackerTitle">Check the progress.</h2>
+      <p class="modal-description">Enter the tracking ID you received after submitting your report.</p>
+      <form id="trackerForm">
+        <label for="trackerInput">Tracking ID *</label>
+        <input id="trackerInput" type="text" placeholder="CF-XXXXXXXX" required maxlength="30">
+        <button class="button button-full" id="trackSubmitBtn" type="submit">Find my report <span>→</span></button>
+      </form>
+      <div id="trackerResult" class="tracker-result" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
