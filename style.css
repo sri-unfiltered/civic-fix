@@ -196,3 +196,71 @@ select:focus-visible, textarea:focus-visible {
   .location-row { flex-direction: column; }
   .location-button { width: 100%; }
 }
+
+/* CIVICFIX PHASE 2 */
+.offline-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 16px 0;
+  border: 1px solid #d9ded2;
+  border-radius: 8px;
+  background: #f3f5ef;
+  color: #252920;
+  font-size: 13px;
+}
+
+.offline-status .status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #538b3f;
+}
+
+.offline-status[data-online="false"] {
+  background: #fff4df;
+  border-color: #e8d2a7;
+}
+
+.offline-status[data-online="false"] .status-dot {
+  background: #c17b16;
+}
+
+.draft-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.draft-toolbar button {
+  flex: 1 1 140px;
+}
+
+#draftStatus {
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.photo-preview img {
+  display: block;
+  object-fit: contain;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+#trackerResult {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .draft-toolbar {
+    flex-direction: column;
+  }
+
+  .draft-toolbar button {
+    width: 100%;
+  }
+}

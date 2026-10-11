@@ -1,3 +1,4 @@
+
 "use strict";
 
 const API_BASE = "http://localhost:3000/api";
@@ -11,10 +12,15 @@ let toastTimer;
 
 function showToast(message) {
   const toast = $("#toast");
+  if (!toast) return;
+
   toast.textContent = message;
   toast.hidden = false;
+
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.hidden = true; }, 3000);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, 3000);
 }
 
 async function apiRequest(path, options = {}) {
@@ -24,15 +30,20 @@ async function apiRequest(path, options = {}) {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers: {
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.body
+          ? { "Content-Type": "application/json" }
+          : {}),
         ...(options.headers || {})
       }
     });
   } catch {
-    throw new Error("Cannot connect to the backend. Start your CivicFix server first.");
+    throw new Error(
+      "Cannot connect to the backend. Start your CivicFix server first."
+    );
   }
 
   let data;
+
   try {
     data = await response.json();
   } catch {
@@ -40,41 +51,110 @@ async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok || data.success === false) {
-    throw new Error(data.message || `Request failed (${response.status}).`);
+    throw new Error(
+      data.message || `Request failed (${response.status}).`
+    );
   }
+
   return data;
 }
 
 function getDate(value) {
   if (!value) return "Not provided";
+
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleString();
 }
 
 function makeCellText(value) {
-  return value === null || value === undefined || value === "" ? "—" : String(value);
+  return value === null || value === undefined || value === ""
+    ? "—"
+    : String(value);
 }
 
 function addCellText(row, value, className = "") {
   const cell = document.createElement("td");
+
   cell.textContent = makeCellText(value);
-  if (className) cell.className = className;
+
+  if (className) {
+    cell.className = className;
+  }
+
   row.appendChild(cell);
   return cell;
 }
 
+function getReportFlags(report) {
+  const flags = [];
+
+  const location = String(report.location || "").trim();
+  const verification = String(
+    report.locationVerification || ""
+  ).toLowerCase();
+
+  if (!location) {
+    flags.push("Location missing");
+  } else if (
+    [
+      "missing",
+      "approximate",
+      "needs-verification",
+      "unverified"
+    ].includes(verification)
+  ) {
+    flags.push("Location needs verification");
+  }
+
+  const photoStatus = String(
+    report.photoStatus || ""
+  ).toLowerCase();
+
+  if (
+    [
+      "missing",
+      "not-provided",
+      "not-provided-optional",
+      "none"
+    ].includes(photoStatus)
+  ) {
+    flags.push("No photo provided");
+  }
+
+  if (!String(report.description || "").trim()) {
+    flags.push("Description missing");
+  }
+
+  if (!String(report.issueType || "").trim()) {
+    flags.push("Category missing");
+  }
+
+  return flags;
+}
+
 function updateStats() {
   $("#totalReports").textContent = allReports.length;
-  $("#reviewReports").textContent =
-    allReports.filter((r) => r.status === "Under Review").length;
-  $("#highReports").textContent =
-    allReports.filter((r) => ["High", "Critical"].includes(r.severity)).length;
-  $("#resolvedReports").textContent =
-    allReports.filter((r) => r.status === "Resolved").length;
+
+  $("#reviewReports").textContent = allReports.filter(
+    (report) => report.status === "Under Review"
+  ).length;
+
+  $("#highReports").textContent = allReports.filter(
+    (report) => ["High", "Critical"].includes(report.severity)
+  ).length;
+
+  $("#resolvedReports").textContent = allReports.filter(
+    (report) => report.status === "Resolved"
+  ).length;
 }
 
 function showReportDetails(report) {
-  $("#detailTitle").textContent = report.trackingId || "Report details";
+  $("#detailTitle").textContent =
+    report.trackingId || "Report details";
+
   const grid = $("#adminDetailGrid");
   grid.replaceChildren();
 
@@ -82,10 +162,20 @@ function showReportDetails(report) {
     ["Tracking ID", report.trackingId],
     ["Category", report.issueType],
     ["Location", report.location],
+    [
+      "Location verification",
+      report.locationVerification || "Not specified"
+    ],
+    ["Photo status", report.photoStatus || "Not specified"],
     ["Priority", report.severity],
     ["Status", report.status],
     ["Submitted", getDate(report.createdAt)],
-    ["Description", report.description]
+    ["Description", report.description],
+    [
+      "Review flags",
+      getReportFlags(report).join(" • ") ||
+        "No obvious missing details"
+    ]
   ];
 
   details.forEach(([label, value]) => {
@@ -112,11 +202,19 @@ function closeDetails() {
 }
 
 $("#closeAdminModal")?.addEventListener("click", closeDetails);
+
 $("#adminDetailModal")?.addEventListener("click", (event) => {
-  if (event.target.id === "adminDetailModal") closeDetails();
+  if (event.target.id === "adminDetailModal") {
+    closeDetails();
+  }
 });
+
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !$("#adminDetailModal").hidden) closeDetails();
+  const modal = $("#adminDetailModal");
+
+  if (event.key === "Escape" && modal && !modal.hidden) {
+    closeDetails();
+  }
 });
 
 function renderReports() {
@@ -125,7 +223,9 @@ function renderReports() {
 
   const filtered = activeFilter === "all"
     ? allReports
-    : allReports.filter((report) => report.status === activeFilter);
+    : allReports.filter(
+        (report) => report.status === activeFilter
+      );
 
   $("#reportCountLabel").textContent =
     `${filtered.length} report${filtered.length === 1 ? "" : "s"} shown`;
@@ -137,15 +237,35 @@ function renderReports() {
 
     addCellText(row, report.trackingId, "admin-id");
     addCellText(row, report.issueType);
-    addCellText(row, report.location);
+
+    const locationCell = addCellText(row, report.location);
+    const flags = getReportFlags(report);
+
+    if (flags.length > 0) {
+      const note = document.createElement("small");
+      note.textContent = flags.join(" • ");
+      note.style.display = "block";
+      note.style.marginTop = "4px";
+      note.style.opacity = "0.8";
+      locationCell.appendChild(note);
+    }
+
     addCellText(row, report.severity);
 
     const statusCell = document.createElement("td");
     const select = document.createElement("select");
-    select.setAttribute("aria-label", `Status for ${report.trackingId}`);
+
+    select.setAttribute(
+      "aria-label",
+      `Status for ${report.trackingId || "report"}`
+    );
 
     const statuses = [
-      "Submitted", "Under Review", "In Progress", "Resolved", "Rejected"
+      "Submitted",
+      "Under Review",
+      "In Progress",
+      "Resolved",
+      "Rejected"
     ];
 
     statuses.forEach((status) => {
@@ -161,15 +281,21 @@ function renderReports() {
       select.disabled = true;
 
       try {
-        await apiRequest(`/reports/${encodeURIComponent(report.trackingId)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ status: newStatus })
-        });
+        await apiRequest(
+          `/reports/${encodeURIComponent(report.trackingId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ status: newStatus })
+          }
+        );
 
         report.status = newStatus;
+
         updateStats();
         renderReports();
+
         showToast(`Report status updated to "${newStatus}".`);
+        $("#adminError").textContent = "";
       } catch (error) {
         select.value = report.status;
         $("#adminError").textContent = error.message;
@@ -183,10 +309,15 @@ function renderReports() {
 
     const detailsCell = document.createElement("td");
     const detailsButton = document.createElement("button");
+
     detailsButton.className = "button button-outline";
     detailsButton.style.padding = "7px 10px";
     detailsButton.textContent = "View";
-    detailsButton.addEventListener("click", () => showReportDetails(report));
+
+    detailsButton.addEventListener("click", () => {
+      showReportDetails(report);
+    });
+
     detailsCell.appendChild(detailsButton);
     row.appendChild(detailsCell);
 
@@ -197,35 +328,49 @@ function renderReports() {
 async function loadReports() {
   const refresh = $("#refreshDashboard");
   const error = $("#adminError");
-  refresh.disabled = true;
-  error.textContent = "";
+
+  if (refresh) refresh.disabled = true;
+  if (error) error.textContent = "";
+
   $("#reportCountLabel").textContent = "Loading reports…";
 
   try {
     const data = await apiRequest("/reports");
-    allReports = Array.isArray(data.reports) ? data.reports : [];
 
-    // Newest first when the backend includes timestamps.
-    allReports.sort((a, b) =>
-      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-    );
+    allReports = Array.isArray(data.reports)
+      ? data.reports
+      : [];
+
+    allReports.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+
+      return dateB - dateA;
+    });
 
     updateStats();
     renderReports();
   } catch (problem) {
-    error.textContent = problem.message;
-    $("#reportCountLabel").textContent = "Could not load reports.";
+    if (error) error.textContent = problem.message;
+
+    $("#reportCountLabel").textContent =
+      "Could not load reports.";
+
     $("#emptyState").hidden = false;
   } finally {
-    refresh.disabled = false;
+    if (refresh) refresh.disabled = false;
   }
 }
 
 $$(".admin-filter").forEach((button) => {
   button.addEventListener("click", () => {
-    $$(".admin-filter").forEach((item) => item.classList.remove("active"));
+    $$(".admin-filter").forEach((item) => {
+      item.classList.remove("active");
+    });
+
     button.classList.add("active");
-    activeFilter = button.dataset.filter;
+    activeFilter = button.dataset.filter || "all";
+
     renderReports();
   });
 });
