@@ -1,18 +1,18 @@
 
-
 "use strict";
 
 const API_BASE = "http://localhost:3000/api";
 const DRAFT_KEY = "civicfix_phase2_draft";
 const QUEUE_KEY = "civicfix_phase2_queue";
+const LOCAL_REPORTS_KEY = "civicfix_phase2_reports";
 
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
+const $ = selector => document.querySelector(selector);
+const $$ = selector => [...document.querySelectorAll(selector)];
 
-let lastTrackingId = "";
 let toastTimer = null;
 let previewUrl = null;
 let submitting = false;
+let syncing = false;
 
 function readStorage(key, fallback) {
   try {
@@ -28,17 +28,9 @@ function writeStorage(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
     return true;
   } catch {
-    showToast("Browser storage is unavailable. Keep a copy of your report.");
+    showToast("Storage is unavailable. Copy your report details somewhere safe.");
     return false;
   }
-}
-
-function getQueue() {
-  return readStorage(QUEUE_KEY, []);
-}
-
-function saveQueue(queue) {
-  return writeStorage(QUEUE_KEY, queue);
 }
 
 function showToast(message) {
@@ -51,9 +43,15 @@ function showToast(message) {
   toast.textContent = message;
   toast.hidden = false;
   clearTimeout(toastTimer);
+
   toastTimer = setTimeout(() => {
     toast.hidden = true;
   }, 3500);
+}
+
+function setMessage(selector, message) {
+  const element = $(selector);
+  if (element) element.textContent = message;
 }
 
 function openModal(id) {
@@ -66,7 +64,10 @@ function openModal(id) {
   const focusable = modal.querySelector(
     "input:not([type=file]), select, textarea, button"
   );
-  if (focusable) setTimeout(() => focusable.focus(), 50);
+
+  if (focusable) {
+    setTimeout(() => focusable.focus(), 50);
+  }
 }
 
 function closeModal(id) {
@@ -76,16 +77,123 @@ function closeModal(id) {
   modal.hidden = true;
   document.body.classList.toggle(
     "modal-open",
-    $$(".modal-backdrop").some((item) => !item.hidden)
+    $$(".modal-backdrop").some(item => !item.hidden)
   );
 }
 
-function closeAllModals() {
-  $$(".modal-backdrop").forEach((modal) => {
-    modal.hidden = true;
-  });
-  document.body.classList.remove("modal-open");
+// ------------------------------------------
+// Offline queue migration
+// Preserves reports saved by the older Phase 2 code.
+// ------------------------------------------
+
+function normalizeQueueItem(item) {
+  if (!item || typeof item !== "object") return item;
+
+  // Already in the current queue format.
+  if (
+    item.localId &&
+    item.report &&
+    typeof item.report === "object"
+  ) {
+    return item;
+  }
+
+  // Older Phase 2 format stored report fields directly on the item.
+  if (item.id && (
+    item.category ||
+    item.issueType ||
+    item.location ||
+    item.description
+  )) {
+    const locationVerification =
+      item.locationVerification ||
+      (item.locationSource === "gps"
+        ? "gps"
+        : item.locationSource === "approximate"
+          ? "approximate"
+          : item.location
+            ? "manual"
+            : "unverified");
+
+    return {
+      localId: item.id,
+      report: {
+        issueType: item.issueType || item.category || "",
+        location: item.location || "",
+        description: item.description || "",
+        severity: item.severity || "",
+        locationVerification
+      },
+      queuedAt:
+        item.queuedAt ||
+        item.updatedAt ||
+        new Date().toISOString()
+    };
+  }
+
+  // Keep unknown entries rather than deleting potentially useful data.
+  return item;
 }
+
+function getQueue() {
+  const raw = readStorage(QUEUE_KEY, []);
+  if (!Array.isArray(raw)) return [];
+
+  let changed = false;
+
+  const normalized = raw.map(item => {
+    const result = normalizeQueueItem(item);
+
+    if (JSON.stringify(result) !== JSON.stringify(item)) {
+      changed = true;
+    }
+
+    return result;
+  });
+
+  if (changed) {
+    writeStorage(QUEUE_KEY, normalized);
+  }
+
+  return normalized;
+}
+
+function saveQueue(queue) {
+  return writeStorage(QUEUE_KEY, queue);
+}
+
+function getLocalReports() {
+  const reports = readStorage(LOCAL_REPORTS_KEY, []);
+  return Array.isArray(reports) ? reports : [];
+}
+
+function saveLocalReport(report) {
+  const reports = getLocalReports();
+  const index = reports.findIndex(item => item.id === report.id);
+
+  if (index >= 0) {
+    reports[index] = { ...reports[index], ...report };
+  } else {
+    reports.unshift(report);
+  }
+
+  writeStorage(LOCAL_REPORTS_KEY, reports);
+}
+
+function updateQueueStatus() {
+  const queue = getQueue();
+
+  setMessage(
+    "#queueStatus",
+    queue.length
+      ? `${queue.length} report(s) waiting to sync.`
+      : "No reports waiting to sync."
+  );
+}
+
+// ------------------------------------------
+// Backend requests
+// ------------------------------------------
 
 async function apiRequest(path, options = {}) {
   let response;
@@ -102,11 +210,12 @@ async function apiRequest(path, options = {}) {
     });
   } catch {
     throw new Error(
-      "Cannot connect to the backend. Your report can be kept for retry."
+      "Cannot connect to the backend. Your report can be saved for retry."
     );
   }
 
   let data;
+
   try {
     data = await response.json();
   } catch {
@@ -114,13 +223,18 @@ async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok || data.success === false) {
-    throw new Error(data.message || `Request failed (${response.status}).`);
+    throw new Error(
+      data.message || `Request failed (${response.status}).`
+    );
   }
 
   return data;
 }
 
-// Phase 2 status panel and discard control.
+// ------------------------------------------
+// Draft saving
+// ------------------------------------------
+
 function addPhaseTwoControls() {
   const form = $("#reportForm");
   if (!form || $("#draftStatus")) return;
@@ -145,16 +259,21 @@ function addPhaseTwoControls() {
   form.append(status, discard, queueStatus);
 
   discard.addEventListener("click", () => {
-    if (!confirm("Discard this saved draft? This cannot be undone.")) return;
+    if (!confirm("Discard this saved draft? This cannot be undone.")) {
+      return;
+    }
 
     localStorage.removeItem(DRAFT_KEY);
     form.reset();
     clearPhotoPreview();
 
-    $("#locationStatus").textContent =
-      "You can enter the location manually.";
-    $("#reportFormMessage").textContent = "";
-    status.textContent = "Saved draft discarded.";
+    setMessage(
+      "#locationStatus",
+      "You can enter the location manually."
+    );
+    setMessage("#reportFormMessage", "");
+    setMessage("#draftStatus", "Saved draft discarded.");
+
     showToast("Draft discarded.");
     updateQueueStatus();
   });
@@ -174,8 +293,12 @@ function getFormDraft() {
 
 function saveDraft() {
   const draft = getFormDraft();
+
   const hasContent = Boolean(
-    draft.issueType || draft.location || draft.description || draft.severity
+    draft.issueType ||
+    draft.location ||
+    draft.description ||
+    draft.severity
   );
 
   if (!hasContent) {
@@ -184,184 +307,245 @@ function saveDraft() {
   }
 
   if (writeStorage(DRAFT_KEY, draft)) {
-    const status = $("#draftStatus");
-    if (status) {
-      status.textContent =
-        `Draft saved on this device at ${new Date().toLocaleTimeString()}.`;
-    }
+    setMessage(
+      "#draftStatus",
+      `Draft saved on this device at ${new Date().toLocaleTimeString()}.`
+    );
   }
 }
 
 function restoreDraft() {
   const draft = readStorage(DRAFT_KEY, null);
-  if (!draft) return;
+  if (!draft || typeof draft !== "object") return;
 
-  if ($("#issueType")) $("#issueType").value = draft.issueType || "";
+  if ($("#issueType")) {
+    $("#issueType").value = draft.issueType || "";
+  }
+
   if ($("#issueLocation")) {
     $("#issueLocation").value = draft.location || "";
     $("#issueLocation").dataset.verification =
       draft.locationVerification || "unverified";
   }
+
   if ($("#issueDescription")) {
     $("#issueDescription").value = draft.description || "";
   }
+
   if ($("#issueSeverity")) {
     $("#issueSeverity").value = draft.severity || "";
   }
 
-  const status = $("#draftStatus");
-  if (status) {
-    status.textContent =
-      `Previous draft restored${draft.savedAt
+  setMessage(
+    "#draftStatus",
+    `Previous draft restored${
+      draft.savedAt
         ? ` (saved ${new Date(draft.savedAt).toLocaleString()})`
-        : ""}. Photos must be selected again.`;
-  }
+        : ""
+    }. Photos must be selected again.`
+  );
 
-  if ($("#locationStatus")) {
-    $("#locationStatus").textContent =
-      draft.locationVerification === "gps"
-        ? "Previously entered GPS location. Please verify it."
-        : "Restored location. Please verify it.";
-  }
+  setMessage(
+    "#locationStatus",
+    draft.locationVerification === "gps"
+      ? "Previously entered GPS location. Please verify it."
+      : "Restored location. Please verify it."
+  );
 }
 
-$("#reportForm")?.addEventListener("input", (event) => {
-  if (event.target.matches("input:not([type=file]), textarea, select")) {
+$("#reportForm")?.addEventListener("input", event => {
+  if (
+    event.target.matches(
+      "input:not([type=file]), textarea, select"
+    )
+  ) {
     saveDraft();
   }
 });
 
 $("#reportForm")?.addEventListener("change", saveDraft);
 
-// Modal controls.
-$$("[data-open-report]").forEach((button) => {
+// ------------------------------------------
+// Modal controls
+// ------------------------------------------
+
+$$("[data-open-report]").forEach(button => {
   button.addEventListener("click", () => openModal("reportModal"));
 });
 
-$("#openTracker")?.addEventListener("click", () => openModal("trackerModal"));
-
-$$("[data-close-modal]").forEach((button) => {
-  button.addEventListener("click", () => closeModal(button.dataset.closeModal));
+$("#openTracker")?.addEventListener("click", () => {
+  openModal("trackerModal");
 });
 
-$$(".modal-backdrop").forEach((backdrop) => {
-  backdrop.addEventListener("click", (event) => {
-    if (event.target === backdrop && backdrop.id !== "successModal") {
+$$("[data-close-modal]").forEach(button => {
+  button.addEventListener("click", () => {
+    closeModal(button.dataset.closeModal);
+  });
+});
+
+$$(".modal-backdrop").forEach(backdrop => {
+  backdrop.addEventListener("click", event => {
+    if (
+      event.target === backdrop &&
+      backdrop.id !== "successModal"
+    ) {
       closeModal(backdrop.id);
     }
   });
 });
 
-document.addEventListener("keydown", (event) => {
+document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
   if ($("#successModal") && !$("#successModal").hidden) return;
 
-  const modal = $$(".modal-backdrop").find((item) => !item.hidden);
+  const modal = $$(".modal-backdrop").find(item => !item.hidden);
   if (modal) closeModal(modal.id);
 });
 
-// Mobile navigation.
+// ------------------------------------------
+// Mobile navigation and category filters
+// ------------------------------------------
+
 $("#menuBtn")?.addEventListener("click", () => {
   const nav = $("#mobileNav");
+  if (!nav) return;
+
   const isOpen = nav.classList.toggle("open");
-  $("#menuBtn").setAttribute("aria-expanded", String(isOpen));
+  $("#menuBtn")?.setAttribute("aria-expanded", String(isOpen));
 });
 
-$$('#mobileNav a').forEach((link) => {
+$$("#mobileNav a").forEach(link => {
   link.addEventListener("click", () => {
-    $("#mobileNav").classList.remove("open");
+    $("#mobileNav")?.classList.remove("open");
     $("#menuBtn")?.setAttribute("aria-expanded", "false");
   });
 });
 
-// Category filters.
-$$(".filter-btn").forEach((button) => {
+$$(".filter-btn").forEach(button => {
   button.addEventListener("click", () => {
-    $$(".filter-btn").forEach((item) => item.classList.remove("active"));
+    $$(".filter-btn").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
 
     const filter = button.dataset.filter;
-    $$(".issue-card").forEach((card) => {
+
+    $$(".issue-card").forEach(card => {
       card.hidden =
         filter !== "all" && card.dataset.category !== filter;
     });
   });
 });
 
-// GPS is optional. Manual locations are always accepted.
+// ------------------------------------------
+// Optional GPS location
+// ------------------------------------------
+
 $("#getLocationBtn")?.addEventListener("click", () => {
-  const status = $("#locationStatus");
   const button = $("#getLocationBtn");
 
   if (!navigator.geolocation) {
-    status.textContent =
-      "GPS unavailable. Enter the location manually.";
+    setMessage(
+      "#locationStatus",
+      "GPS unavailable. Enter the location manually."
+    );
     return;
   }
 
   button.disabled = true;
-  status.textContent = "Requesting location permission…";
+  setMessage("#locationStatus", "Requesting location permission…");
 
   navigator.geolocation.getCurrentPosition(
-    (position) => {
+    position => {
       const lat = position.coords.latitude.toFixed(6);
       const lon = position.coords.longitude.toFixed(6);
 
-      $("#issueLocation").value = `GPS coordinates: ${lat}, ${lon}`;
-      $("#issueLocation").dataset.verification = "gps";
-      status.textContent =
-        "GPS location added. Please verify that it identifies the correct place.";
+      if ($("#issueLocation")) {
+        $("#issueLocation").value =
+          `GPS coordinates: ${lat}, ${lon}`;
+        $("#issueLocation").dataset.verification = "gps";
+      }
+
+      if ($("#locationConfidence")) {
+        $("#locationConfidence").value =
+          position.coords.accuracy <= 100 ? "gps" : "approximate";
+      }
+
+      setMessage(
+        "#locationStatus",
+        "GPS location added. Please verify the correct place."
+      );
+
       button.disabled = false;
       saveDraft();
     },
     () => {
-      status.textContent =
-        "GPS unavailable or permission denied. Enter the location manually.";
+      setMessage(
+        "#locationStatus",
+        "GPS unavailable or permission denied. Enter the location manually."
+      );
+
       button.disabled = false;
-      $("#issueLocation").dataset.verification = "unverified";
+
+      if ($("#issueLocation")) {
+        $("#issueLocation").dataset.verification = "unverified";
+      }
+
+      if ($("#locationConfidence")) {
+        $("#locationConfidence").value = "manual";
+      }
+
       saveDraft();
     },
-    { enableHighAccuracy: true, timeout: 10000 }
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
   );
 });
 
 $("#issueLocation")?.addEventListener("input", () => {
   const input = $("#issueLocation");
+
   if (!input.value.startsWith("GPS coordinates:")) {
     input.dataset.verification = "manual";
-    if ($("#locationStatus")) {
-      $("#locationStatus").textContent =
-        "Manual location entered. It may need verification.";
-    }
+
+    setMessage(
+      "#locationStatus",
+      "Manual location entered. It may need verification."
+    );
   }
 });
 
-// Optional photo preview. Photos are not uploaded or persisted by this code.
+// ------------------------------------------
+// Photo preview
+// Photos are previewed locally, not uploaded.
+// ------------------------------------------
+
 function clearPhotoPreview() {
   if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = null;
 
   $("#photoPreview")?.replaceChildren();
-  if ($("#photoPreview")) $("#photoPreview").hidden = true;
+
+  if ($("#photoPreview")) {
+    $("#photoPreview").hidden = true;
+  }
 }
 
 $("#issuePhoto")?.addEventListener("change", () => {
   const input = $("#issuePhoto");
   const preview = $("#photoPreview");
+
   clearPhotoPreview();
 
-  const file = input.files?.[0];
-  if (!file) return;
+  const file = input?.files?.[0];
+  if (!file || !preview) return;
 
   if (!file.type.startsWith("image/")) {
     input.value = "";
-    showToast("That file is not an image. You can submit without a photo.");
+    showToast("Choose an image file or continue without a photo.");
     return;
   }
 
   if (file.size > 5 * 1024 * 1024) {
     input.value = "";
-    showToast("Photo exceeds 5 MB. Choose a smaller photo or continue without one.");
+    showToast("Choose a photo smaller than 5 MB.");
     return;
   }
 
@@ -371,115 +555,169 @@ $("#issuePhoto")?.addEventListener("change", () => {
   image.src = previewUrl;
   image.alt = "Selected report photo preview";
 
-  image.onerror = () => {
-    clearPhotoPreview();
-    showToast("This photo could not be previewed. You can still submit without it.");
-  };
-
   preview.appendChild(image);
-  preview.hidden = false;
 
   const note = document.createElement("p");
   note.className = "field-note";
   note.textContent =
-    "Photo preview only. It is not uploaded or saved with your report.";
+    "Photo preview only. The current backend does not upload photos.";
+
   preview.appendChild(note);
+  preview.hidden = false;
 });
 
-// Local queue: reports remain pending until the server confirms success.
-function updateQueueStatus() {
-  const queue = getQueue();
-  const element = $("#queueStatus");
-  if (!element) return;
-
-  element.textContent = queue.length
-    ? `${queue.length} report(s) pending sync on this device. They are not yet confirmed as server reports.`
-    : "No reports waiting to sync.";
-}
+// ------------------------------------------
+// Queue and local report storage
+// ------------------------------------------
 
 function makeLocalId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  return `cf-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return "CF-LOCAL-" +
+    Date.now().toString(36).toUpperCase() +
+    "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
-function queueReport(report) {
+function queueReport(item) {
   const queue = getQueue();
-  const existing = queue.find((item) => item.localId === report.localId);
+  const index = queue.findIndex(
+    entry => entry.localId === item.localId
+  );
 
-  if (!existing) queue.push(report);
+  if (index >= 0) {
+    queue[index] = item;
+  } else {
+    queue.push(item);
+  }
 
   if (!saveQueue(queue)) {
     throw new Error(
-      "Could not save the offline queue. Keep this report text copied before closing the page."
+      "Could not save this report locally. Copy its details somewhere safe."
     );
   }
+
+  saveLocalReport({
+    id: item.localId,
+    ...item.report,
+    syncStatus: "pending-sync",
+    serverAccepted: false,
+    updatedAt: new Date().toISOString()
+  });
 
   updateQueueStatus();
 }
 
 async function sendQueuedReport(item) {
-  // The server must support clientId idempotency for guaranteed
-  // duplicate prevention when a response is lost.
+  if (!item?.localId || !item?.report) {
+    throw new Error(
+      "A saved queue entry has an unknown format. It has been preserved."
+    );
+  }
+
+  const report = item.report;
+
   const data = await apiRequest("/reports", {
     method: "POST",
     body: JSON.stringify({
-      ...item.report,
+      issueType: report.issueType || report.category || "",
+      location: report.location || "",
+      description: report.description || "",
+      severity: report.severity || "",
+      locationVerification:
+        report.locationVerification || "unverified",
       clientId: item.localId,
-      locationVerification: item.report.locationVerification || "unverified",
       photoStatus: "not_uploaded"
     })
   });
 
+  // The backend returns { success: true, report: { trackingId, ... } }.
   const trackingId = data.report?.trackingId;
+
   if (!trackingId) {
     throw new Error("Server did not return a tracking ID.");
   }
 
-  const queue = getQueue().filter((entry) => entry.localId !== item.localId);
-  saveQueue(queue);
+  saveLocalReport({
+    id: item.localId,
+    ...report,
+    serverReportId: trackingId,
+    serverAccepted: true,
+    syncStatus: "synced",
+    syncedAt: new Date().toISOString()
+  });
+
+  // Remove only the item confirmed by the server.
+  const remaining = getQueue().filter(
+    entry => entry.localId !== item.localId
+  );
+
+  saveQueue(remaining);
 
   return trackingId;
 }
 
 async function retryQueue() {
-  if (!navigator.onLine) {
+  if (syncing || !navigator.onLine) {
     updateQueueStatus();
     return;
   }
 
-  let queue = getQueue();
+  syncing = true;
 
-  for (const item of queue) {
-    try {
-      const trackingId = await sendQueuedReport(item);
-      showToast(`A queued report synced: ${trackingId}`);
-      queue = getQueue();
-    } catch (error) {
-      console.warn("Report still pending sync:", error.message);
-      // Keep failed item for another retry.
+  try {
+    // getQueue safely migrates old Phase 2 queue entries first.
+    const queue = getQueue();
+
+    for (const item of queue) {
+      if (!item?.localId || !item?.report) {
+        console.warn(
+          "An unfamiliar queue entry was preserved and not submitted."
+        );
+        continue;
+      }
+
+      try {
+        const trackingId = await sendQueuedReport(item);
+        showToast(`Report synced. Server tracking ID: ${trackingId}`);
+      } catch (error) {
+        console.warn("Report still pending sync:", error.message);
+      }
     }
+  } finally {
+    syncing = false;
+    updateQueueStatus();
+    refreshStats();
   }
-
-  updateQueueStatus();
-  refreshStats();
 }
 
 window.addEventListener("online", retryQueue);
 window.addEventListener("offline", updateQueueStatus);
 
-// Submit report. Failed/offline submissions are queued locally.
-$("#reportForm")?.addEventListener("submit", async (event) => {
+// ------------------------------------------
+// Report submission
+// ------------------------------------------
+
+$("#reportForm")?.addEventListener("submit", async event => {
   event.preventDefault();
+
   if (submitting) return;
 
   const message = $("#reportFormMessage");
   const button = $("#submitReportBtn");
-  message.textContent = "";
+  const originalButtonHTML = button?.innerHTML;
+
+  if (message) message.textContent = "";
 
   const report = getFormDraft();
 
-  if (!report.issueType || !report.location || !report.description || !report.severity) {
-    message.textContent = "Please complete all required fields.";
+  if (
+    !report.issueType ||
+    !report.location ||
+    !report.description ||
+    !report.severity
+  ) {
+    setMessage(
+      "#reportFormMessage",
+      "Please complete the category, location, description and priority."
+    );
     return;
   }
 
@@ -490,92 +728,122 @@ $("#reportForm")?.addEventListener("submit", async (event) => {
   };
 
   submitting = true;
-  button.disabled = true;
-  button.textContent = "Submitting…";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Submitting…";
+  }
 
   try {
     if (!navigator.onLine) {
       queueReport(item);
-      message.textContent =
-        "You're offline. This report is saved on this device and is pending sync. It has not been submitted to the server.";
-      showToast("Offline report saved for retry.");
+
+      setMessage(
+        "#reportFormMessage",
+        "Saved on this device. The server has not received this report yet."
+      );
+
+      showToast("Report saved offline and queued for retry.");
       return;
     }
 
     try {
       const trackingId = await sendQueuedReport(item);
-      lastTrackingId = trackingId;
 
       $("#trackingId").textContent = trackingId;
-      $("#successMessage").textContent =
-        "Your report was confirmed by the server. Save this tracking ID.";
+      setMessage(
+        "#successMessage",
+        "Your report was accepted by the server. Keep this tracking ID."
+      );
 
       localStorage.removeItem(DRAFT_KEY);
+
       $("#reportForm").reset();
       clearPhotoPreview();
 
-      $("#issueLocation").dataset.verification = "unverified";
-      $("#locationStatus").textContent =
-        "You can enter the location manually.";
+      if ($("#issueLocation")) {
+        $("#issueLocation").dataset.verification = "unverified";
+      }
+
+      setMessage(
+        "#locationStatus",
+        "You can enter the location manually."
+      );
 
       closeModal("reportModal");
       openModal("successModal");
+
       refreshStats();
       updateQueueStatus();
     } catch (error) {
-      // Preserve the report for retry, without claiming server receipt.
       queueReport(item);
-      message.textContent =
+
+      setMessage(
+        "#reportFormMessage",
         "The server did not confirm receipt. Your report is saved locally and pending sync. " +
-        error.message;
-      showToast("Report pending sync. It has not been confirmed by the server.");
+          error.message
+      );
+
+      showToast("Report pending sync; server receipt is not confirmed.");
     }
   } catch (error) {
-    message.textContent = error.message;
+    setMessage("#reportFormMessage", error.message);
   } finally {
     submitting = false;
-    button.disabled = false;
-    button.innerHTML = 'Submit report <span>↗</span>';
+
+    if (button) {
+      button.disabled = false;
+
+      if (originalButtonHTML) {
+        button.innerHTML = originalButtonHTML;
+      }
+    }
+
     updateQueueStatus();
   }
 });
 
-// Success modal controls.
-$("#closeSuccessBtn")?.addEventListener("click", () => closeModal("successModal"));
+// ------------------------------------------
+// Success modal controls
+// ------------------------------------------
+
+$("#closeSuccessBtn")?.addEventListener("click", () => {
+  closeModal("successModal");
+});
 
 $("#copyTrackingBtn")?.addEventListener("click", async () => {
-  const value = $("#trackingId").textContent.trim();
+  const value = $("#trackingId")?.textContent.trim() || "";
 
   try {
     await navigator.clipboard.writeText(value);
     showToast("Tracking ID copied.");
   } catch {
-    const field = document.createElement("textarea");
-    field.value = value;
-    document.body.appendChild(field);
-    field.select();
-    const copied = document.execCommand("copy");
-    field.remove();
-    showToast(copied ? "Tracking ID copied." : `Tracking ID: ${value}`);
+    showToast(`Tracking ID: ${value}`);
   }
 });
 
 $("#trackAfterSubmit")?.addEventListener("click", () => {
-  const id = $("#trackingId").textContent.trim();
+  const id = $("#trackingId")?.textContent.trim() || "";
+
   closeModal("successModal");
-  $("#trackerInput").value = id;
-  $("#trackerResult").replaceChildren();
   openModal("trackerModal");
-  $("#trackerForm").requestSubmit();
+
+  if ($("#trackerInput")) $("#trackerInput").value = id;
+  $("#trackerForm")?.requestSubmit();
 });
 
-// Tracking.
-$("#trackerForm")?.addEventListener("submit", async (event) => {
+// ------------------------------------------
+// Report tracking
+// ------------------------------------------
+
+$("#trackerForm")?.addEventListener("submit", async event => {
   event.preventDefault();
 
-  const id = $("#trackerInput").value.trim().toUpperCase();
+  const id = $("#trackerInput")?.value.trim().toUpperCase() || "";
   const result = $("#trackerResult");
   const button = $("#trackSubmitBtn");
+
+  if (!result) return;
 
   result.replaceChildren();
 
@@ -584,13 +852,21 @@ $("#trackerForm")?.addEventListener("submit", async (event) => {
     return;
   }
 
-  button.disabled = true;
-  button.textContent = "Searching…";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Searching…";
+  }
 
   try {
-    const data = await apiRequest(`/reports/${encodeURIComponent(id)}`);
+    const data = await apiRequest(
+      `/reports/${encodeURIComponent(id)}`
+    );
+
     const report = data.report;
-    if (!report) throw new Error("No report was returned.");
+
+    if (!report) {
+      throw new Error("No report was returned by the server.");
+    }
 
     const card = document.createElement("div");
     card.className = "result-card";
@@ -598,9 +874,8 @@ $("#trackerForm")?.addEventListener("submit", async (event) => {
     const title = document.createElement("h3");
     title.textContent = report.trackingId || id;
 
-    const status = document.createElement("span");
-    status.className = "status-pill";
-    status.textContent = report.status || "Submitted";
+    const status = document.createElement("p");
+    status.textContent = `Status: ${report.status || "Submitted"}`;
 
     card.append(title, status);
 
@@ -609,57 +884,88 @@ $("#trackerForm")?.addEventListener("submit", async (event) => {
       ["Location", report.location],
       ["Description", report.description],
       ["Priority", report.severity],
-      ["Submitted", report.createdAt
-        ? new Date(report.createdAt).toLocaleString()
-        : "Not available"]
+      [
+        "Submitted",
+        report.createdAt
+          ? new Date(report.createdAt).toLocaleString()
+          : ""
+      ]
     ].forEach(([label, value]) => {
       if (!value) return;
 
-      const p = document.createElement("p");
+      const paragraph = document.createElement("p");
       const strong = document.createElement("strong");
+
       strong.textContent = `${label}: `;
-      p.append(strong, document.createTextNode(String(value)));
-      card.appendChild(p);
+      paragraph.append(strong, document.createTextNode(String(value)));
+      card.appendChild(paragraph);
     });
 
-    const timeline = document.createElement("div");
-    timeline.className = "timeline";
-
-    const history = document.createElement("div");
-    history.className = "timeline-item";
-    history.textContent = `Current status: ${report.status || "Submitted"}`;
-
-    timeline.appendChild(history);
-    card.appendChild(timeline);
     result.appendChild(card);
   } catch (error) {
-    const p = document.createElement("p");
-    p.className = "form-message";
-    p.textContent = error.message;
-    result.appendChild(p);
+    // If the server cannot find the ID, check this device's saved reports.
+    const localReports = getLocalReports();
+
+    const local = localReports.find(item =>
+      item.id?.toUpperCase() === id ||
+      item.localId?.toUpperCase() === id ||
+      item.serverReportId?.toUpperCase() === id
+    );
+
+    const paragraph = document.createElement("p");
+
+    if (local) {
+      paragraph.textContent = local.serverAccepted
+        ? `This device has a saved record. Server tracking ID: ${local.serverReportId || "not available"}.`
+        : "This report is saved on this device but has not been confirmed by the server yet.";
+
+      if (local.category || local.issueType) {
+        paragraph.textContent +=
+          ` Category: ${local.category || local.issueType}.`;
+      }
+    } else {
+      paragraph.textContent = error.message;
+    }
+
+    result.appendChild(paragraph);
   } finally {
-    button.disabled = false;
-    button.innerHTML = 'Find my report <span>→</span>';
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Find my report →";
+    }
   }
 });
 
-// Statistics.
+// ------------------------------------------
+// Dashboard statistics and backend health
+// ------------------------------------------
+
 async function refreshStats() {
   try {
     const data = await apiRequest("/reports");
     const reports = Array.isArray(data.reports) ? data.reports : [];
 
-    $("#statTotal").textContent = reports.length;
-    $("#statProgress").textContent = reports.filter((report) =>
-      ["Submitted", "Under Review", "In Progress"].includes(report.status)
-    ).length;
-    $("#statResolved").textContent = reports.filter(
-      (report) => report.status === "Resolved"
-    ).length;
+    setMessage("#statTotal", String(reports.length));
+
+    setMessage(
+      "#statProgress",
+      String(reports.filter(report =>
+        ["Submitted", "Under Review", "In Progress"].includes(
+          report.status
+        )
+      ).length)
+    );
+
+    setMessage(
+      "#statResolved",
+      String(
+        reports.filter(report => report.status === "Resolved").length
+      )
+    );
   } catch {
-    $("#statTotal").textContent = "—";
-    $("#statProgress").textContent = "—";
-    $("#statResolved").textContent = "—";
+    setMessage("#statTotal", "—");
+    setMessage("#statProgress", "—");
+    setMessage("#statResolved", "—");
   }
 }
 
@@ -673,7 +979,10 @@ async function checkBackend() {
   }
 }
 
-// Start Phase 2 features.
+// ------------------------------------------
+// Startup
+// ------------------------------------------
+
 addPhaseTwoControls();
 restoreDraft();
 updateQueueStatus();

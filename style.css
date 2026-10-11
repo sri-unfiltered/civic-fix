@@ -264,3 +264,82 @@ select:focus-visible, textarea:focus-visible {
     width: 100%;
   }
 }
+
+/* Admin authentication */
+.admin-auth-view {
+  min-height: calc(100vh - 78px);
+  display: grid;
+  place-items: center;
+  padding: 42px 16px 70px;
+}
+.admin-auth-card {
+  width: min(440px, 100%);
+  padding: clamp(24px, 5vw, 38px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 22px 70px #0004;
+}
+.admin-auth-card h1 {
+  margin: 13px 0 8px;
+  font-size: clamp(30px, 8vw, 42px);
+  letter-spacing: -1.8px;
+  line-height: 1.1;
+}
+.admin-auth-card > p:not(.admin-error) {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.admin-auth-card label {
+  display: block;
+  margin: 15px 0 6px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.admin-auth-card input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.admin-auth-card .button-full {
+  margin-top: 20px;
+}
+.admin-auth-card .admin-error {
+  min-height: 1.5em;
+  margin: 12px 0 0;
+}
+.admin-auth-back {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.admin-auth-back:hover {
+  color: var(--lime);
+}
+.admin-account {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.admin-account > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .admin-auth-view {
+    min-height: calc(100vh - 68px);
+    padding-top: 28px;
+  }
+  .admin-account {
+    gap: 6px;
+  }
+}

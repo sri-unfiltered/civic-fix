@@ -27,8 +27,9 @@ async function apiRequest(path, options = {}) {
   let response;
 
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(API_BASE + path, {
       ...options,
+      credentials: "include",
       headers: {
         ...(options.body
           ? { "Content-Type": "application/json" }
@@ -48,6 +49,16 @@ async function apiRequest(path, options = {}) {
     data = await response.json();
   } catch {
     throw new Error("The backend returned an invalid response.");
+  }
+
+  if (
+    response.status === 401 &&
+    path !== "/admin/login" &&
+    path !== "/admin/session"
+  ) {
+    window.civicfixRequireAdminLogin?.(
+      "Your admin session expired. Sign in again."
+    );
   }
 
   if (!response.ok || data.success === false) {
@@ -377,4 +388,94 @@ $$(".admin-filter").forEach((button) => {
 
 $("#refreshDashboard")?.addEventListener("click", loadReports);
 
-loadReports();
+async function loadAdminSession() {
+  try {
+    const data = await apiRequest("/admin/session");
+
+    if (data.authenticated) {
+      showDashboard(data.username);
+    } else {
+      showLogin("");
+    }
+  } catch (problem) {
+    showLogin(problem.message);
+  }
+
+  const password = $("#adminPassword");
+  if (password) password.value = "";
+}
+
+function showLogin(message) {
+  const loginView = $("#adminLoginView");
+  const adminApp = $("#adminApp");
+  const authMessage = $("#adminAuthMessage");
+
+  if (adminApp) adminApp.hidden = true;
+  if (loginView) loginView.hidden = false;
+  if (authMessage) authMessage.textContent = message || "";
+  document.body.classList.remove("modal-open");
+  window.dispatchEvent(new Event("civicfix:admin-logged-out"));
+}
+
+function showDashboard(username) {
+  const loginView = $("#adminLoginView");
+  const adminApp = $("#adminApp");
+  const identity = $("#adminIdentity");
+  const authMessage = $("#adminAuthMessage");
+
+  if (loginView) loginView.hidden = true;
+  if (adminApp) adminApp.hidden = false;
+  if (identity) identity.textContent = "Signed in as " + (username || "admin");
+  if (authMessage) authMessage.textContent = "";
+
+  loadReports();
+  window.dispatchEvent(new Event("civicfix:admin-authenticated"));
+}
+
+window.civicfixRequireAdminLogin = showLogin;
+
+$("#adminLoginForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const button = $("#adminLoginButton");
+  const message = $("#adminAuthMessage");
+  if (button) button.disabled = true;
+  if (message) message.textContent = "";
+
+  try {
+    const data = await apiRequest("/admin/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("#adminUsername").value.trim(),
+        password: $("#adminPassword").value
+      })
+    });
+
+    $("#adminPassword").value = "";
+    showDashboard(data.username);
+  } catch (problem) {
+    if (message) message.textContent = problem.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
+});
+
+$("#adminLogout")?.addEventListener("click", async () => {
+  const button = $("#adminLogout");
+  const error = $("#adminError");
+  if (button) button.disabled = true;
+
+  try {
+    await apiRequest("/admin/logout", {
+      method: "POST",
+      body: "{}"
+    });
+    showLogin("You have been signed out.");
+  } catch (problem) {
+    if (error) error.textContent = problem.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
+});
+
+loadAdminSession();

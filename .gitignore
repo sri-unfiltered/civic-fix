@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Local credentials
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Local CivicFix data (keep these files on your device)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Logs
+npm-debug.log*
+!backend/.env.example

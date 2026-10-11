@@ -41,9 +41,29 @@
   <script src="admin.js" defer></script>
 </head>
 <body>
+  <section class="admin-auth-view" id="adminLoginView">
+    <form class="admin-auth-card" id="adminLoginForm" autocomplete="on">
+      <div class="section-kicker">CIVICFIX / SECURE ACCESS</div>
+      <h1>Admin sign in<span class="lime-text">.</span></h1>
+      <p>Sign in to review reports and update their status.</p>
+      <label for="adminUsername">Username</label>
+      <input id="adminUsername" name="username" type="text" autocomplete="username" required maxlength="80">
+      <label for="adminPassword">Password</label>
+      <input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
+      <button class="button button-full" id="adminLoginButton" type="submit">Sign in</button>
+      <p class="admin-error" id="adminAuthMessage" role="alert" aria-live="polite"></p>
+      <a class="admin-auth-back" href="index.html">← Back to website</a>
+    </form>
+  </section>
+
+  <div id="adminApp" hidden>
   <header class="site-header">
     <a class="brand" href="index.html"><span class="brand-mark">C</span><span>Civic<span class="lime-text">Fix</span></span></a>
-    <a class="button button-small" href="index.html">← Back to website</a>
+    <div class="admin-account">
+      <span id="adminIdentity" aria-live="polite"></span>
+      <button class="button button-outline button-small" id="adminLogout" type="button">Log out</button>
+      <a class="button button-small" href="index.html">← Back to website</a>
+    </div>
   </header>
 
   <main class="section-wrap admin-main">
@@ -108,6 +128,7 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </div>
   <script src="phase2-admin.js" defer></script>
 </body>
 </html>
